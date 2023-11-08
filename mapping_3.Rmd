@@ -34,32 +34,136 @@ library(ggfortify)
 library(plotly)
 library(leaflet)
 library(OpenStreetMap)
+library(mapdata)
+library(rasterVis)
 library(sf)
+library(cowplot)
+library(dismo)
+library(rdryad)
+library(rgbif)
 ```
 
-## R Markdown
+## The Lebanese cedar (*Cedrus libani*) or أرز لبناني
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r tree, echo=FALSE}
+knitr::include_graphics("images/tree.jpeg")
+``` 
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+A true cedar and a member of the Pinaceae family native to the mountains of the Levant region. Typically grow in shallow soils on steep slopes. Most commonly found between 1300 and 3000 meters.
 
-```{r cars}
-summary(cars)
+They are referenced in the epic of Gilgamesh and are featured on the Lebanese flag.
+
+Currently listed as Vulnerable on the IUCN Red List.
+
+
+```{r flag, echo=FALSE}
+knitr::include_graphics("images/flag.png")
+``` 
+
+```{r data prep, include=FALSE, warning=TRUE, echo=FALSE}
+celi.rgbif <- occ_data(scientificName = "Cedrus libani",
+                       hasCoordinate = TRUE, limit = 2000,
+                       decimalLongitude = "34, 41.32", 
+                       decimalLatitude = "28.69, 37")
+
+celi.rgbif.df <- cbind.data.frame(celi.rgbif$data$scientificName,
+                                  celi.rgbif$data$decimalLatitude,
+                                  celi.rgbif$data$decimalLongitude,
+                                  celi.rgbif$data$country,
+                                  celi.rgbif$data$elevation,
+                                  celi.rgbif$data$dateIdentified)
+
+colnames(celi.rgbif.df) <- c('species', 'y', 'x', 'state', 'date')
+```
+## Now let's take a look at some super sweet maps!
+```{r climatic variables, include=FALSE, echo=FALSE}
+bioclim <- getData(name = "worldclim", res = 2.5, var = "bio", path = "./")
+
+names(bioclim) <- c("Ann Mean Temp","Mean Diurnal Range","Isothermality","Temperature Seasonality",
+                    "Max Temp Warmest Mo","Min Temp Coldest Mo","Ann Temp Range","Mean Temp Wettest Qtr",
+                    "Mean Temp Driest Qtr","Mean Temp Warmest Qtr","Mean Temp Coldest Qtr","Annual
+                    Precip","Precip Wettest Mo","Precip Driest Mo","Precip Seasonality","Precip Wettest
+                    Qtr","Precip Driest Qtr","Precip Warmest Qtr","Precip Coldest Qtr")
+
+bio.extent <- extent(x = c(
+  min(celi.rgbif.df$x-0.01),
+  max(celi.rgbif.df$x+0.01),
+  min(celi.rgbif.df$y-0.01),
+  max(celi.rgbif.df$y+0.01)))
+
+bioclim.extent <- crop(x = bioclim, y = bio.extent)
+
+bioclim.model <- bioclim(x = bioclim.extent, p = cbind(celi.rgbif.df$x,celi.rgbif.df$y))
+
+presence.model <- dismo::predict(object = bioclim.model, 
+                                 x = bioclim.extent, 
+                                 ext = bio.extent)
 ```
 
-## Including Plots
+```{r static map, include=FALSE, echo=FALSE}
+map <- map_data("world")
 
-You can also embed plots, for example:
+ggplot() +
+  geom_polygon(data = map, aes(x=long, y = lat, group = group),
+               fill = "beige", color="black") +
+  geom_point(data = celi.rgbif.df, aes(x=x, y=y, color = state), size = 3) +
+  coord_fixed(xlim = c(34.5,37), ylim = c(33,38)) +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("*Cedrus libani* observations in the Levant") + 
+  guides(color=guide_legend("Legend", override.aes = list(size = 4))) +
+  theme_bw() + theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(legend.position = "bottom") +
+  theme(legend.title.align = 0.5, legend.box.just = "center") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "darkslategray1"))
+```
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+## First off let's look at a static map of the probability of occurrence.
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+```{r rasterVis plot, include=TRUE, echo=FALSE}
+rasterVis::gplot(presence.model) + 
+  geom_polygon(data = map, aes(x= long, y = lat), fill = "beige", color="black") +
+  geom_raster(aes(fill=value)) +
+  geom_polygon(data = map, aes(x= long, y = lat), fill = NA, color="black") +
+  geom_point(data = celi.rgbif.df, aes(x = x, y = y), size = 2, color = "blue", alpha = 0.5) +
+  scale_fill_gradientn(colours=c("brown1","darkgoldenrod1","chartreuse3"), "Probability") +
+coord_fixed(xlim = c(34.5,37), ylim = c(33,38)) +
+  xlab("Longitude") + ylab("Latitude") + ggtitle("Probability of CELI Occurrence") + 
+  theme_bw() + theme(plot.title = element_text(hjust = 0.5)) + theme(legend.position = "right") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "beige"))
+```
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+## Next let's look at an interactive version.
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+```{r leaflet map, include=TRUE, echo=FALSE}
+colors <- c("brown1","darkgoldenrod1","chartreuse3")
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+leaflet() %>% 
+  addTiles() %>%
+  addRasterImage(presence.model, colors = colors, opacity = 0.4) %>%
+  addCircleMarkers(celi.rgbif.df$x,
+                   celi.rgbif.df$y,
+                   weight = 1,
+                   color = "grey",
+                   fillColor = "blueviolet",
+                   fillOpacity = 0.7) %>%
+  addMiniMap(position = 'topright',
+             width = 100, 
+             height = 100,
+             toggleDisplay = FALSE) %>%
+  addScaleBar(position = "bottomright")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-
-
-
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
 
 ## Did you know...{style="color:red"}
 <p>&nbsp;</p>
@@ -68,8 +172,15 @@ Note that the `echo = FALSE` parameter was added to the code chunk to prevent pr
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
 ```{r, echo=FALSE}
-knitr::include_graphics("images/pumpkins.png", dpi = 200)
+knitr::include_graphics("images/phone.jpeg")
 ``` 
   
-**Americans are expected to spend $3.6 billion on Halloween candy this year.**
+**The classic Nokia Tune ringtone is based on Gran Vals by Francisco Tárrega,**
+**and at its peak was played 1.8 billion times a day or over 20,000 times a second**
