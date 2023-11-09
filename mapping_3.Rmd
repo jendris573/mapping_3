@@ -124,9 +124,9 @@ ggplot() +
 <p>&nbsp;</p>
 ```{r rasterVis plot, include=TRUE, echo=FALSE}
 rasterVis::gplot(presence.model) + 
-  geom_polygon(data = map, aes(x= long, y = lat), fill = "beige", color="black") +
+  geom_polygon(data = map, aes(x= long, y = lat), fill = "beige", color="black", group='group') +
   geom_raster(aes(fill=value)) +
-  geom_polygon(data = map, aes(x= long, y = lat), fill = NA, color="black") +
+  geom_polygon(data = map, aes(x= long, y = lat), fill = NA, color="black", group='group') +
   geom_point(data = celi.rgbif.df, aes(x = x, y = y), size = 2, color = "blue", alpha = 0.5) +
   scale_fill_gradientn(colours=c("brown1","darkgoldenrod1","chartreuse3"), "Probability") +
 coord_fixed(xlim = c(34.5,37), ylim = c(33,38)) +
